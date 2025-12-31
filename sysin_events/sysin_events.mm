@@ -48,7 +48,15 @@ namespace
     CFStringRef createStringForKey(CGKeyCode keyCode)
     {
         TISInputSourceRef currentKeyboard = TISCopyCurrentKeyboardInputSource();
+        if (currentKeyboard == NULL) return NULL;
+
         CFDataRef layoutData = (CFDataRef)TISGetInputSourceProperty(currentKeyboard, kTISPropertyUnicodeKeyLayoutData);
+        if (layoutData == NULL)
+        {
+            CFRelease(currentKeyboard);
+            return NULL;
+        }
+
         const UCKeyboardLayout *keyboardLayout =
             (const UCKeyboardLayout *)CFDataGetBytePtr(layoutData);
 
@@ -66,7 +74,7 @@ namespace
                 sizeof(chars) / sizeof(chars[0]),
                 &realLength,
                 chars);
-        CFRelease(currentKeyboard);    
+        CFRelease(currentKeyboard);
 
         return CFStringCreateWithCharacters(kCFAllocatorDefault, chars, 1);
     }
@@ -102,11 +110,20 @@ namespace
         }
 
         charStr = CFStringCreateWithCharacters(kCFAllocatorDefault, &character, 1);
+        if (charStr == NULL)
+        {
+            return UINT16_MAX;
+        }
 
         /* Our values may be NULL (0), so we need to use this function. */
-        if (!CFDictionaryGetValueIfPresent(charToCodeDict, charStr, (const void **)&code))
+        const void *value;
+        if (!CFDictionaryGetValueIfPresent(charToCodeDict, charStr, &value))
         {
             code = UINT16_MAX;
+        }
+        else
+        {
+            code = (CGKeyCode)(uintptr_t)value;
         }
 
         CFRelease(charStr);
@@ -175,9 +192,11 @@ namespace
 
     void mousevent(CGEventType type, CGPoint position, CGMouseButton button)
     {
-        CGEventRef e = CGEventCreateMouseEvent(CGEventSourceCreate(kCGEventSourceStateHIDSystemState), type, position, button);
+        CGEventSourceRef source = CGEventSourceCreate(kCGEventSourceStateHIDSystemState);
+        CGEventRef e = CGEventCreateMouseEvent(source, type, position, button);
         CGEventPost(kCGHIDEventTap, e);
-        CFRelease(e);  
+        CFRelease(e);
+        if (source != NULL) CFRelease(source);
     }
         
     bool exceeds_threshold(float v, float threshold)
@@ -531,12 +550,13 @@ namespace
         bool cfilterfunc_process(piw::cfilterenv_t *env, unsigned long long from, unsigned long long to, unsigned long samplerate, unsigned buffersize)
         {
             if(id_.is_null()) return false;
-            
+
             unsigned i;
             piw::data_nb_t d;
 
             CGEventRef reference_event = CGEventCreate(NULL);
             CGPoint position = CGEventGetLocation(reference_event);
+            CFRelease(reference_event);
 
             bool moved = false;
             bool button1 = false;
@@ -675,6 +695,7 @@ namespace
             {
                 CGEventRef reference_event = CGEventCreate(NULL);
                 CGPoint position = CGEventGetLocation(reference_event);
+                CFRelease(reference_event);
 
                 mousevent(kCGEventLeftMouseUp, position, kCGMouseButtonLeft);
                 input_->mouse_1_down_ = false;
@@ -687,6 +708,7 @@ namespace
             {
                 CGEventRef reference_event = CGEventCreate(NULL);
                 CGPoint position = CGEventGetLocation(reference_event);
+                CFRelease(reference_event);
 
                 mousevent(kCGEventRightMouseUp, position, kCGMouseButtonRight);
                 input_->mouse_2_down_ = false;
